@@ -1,0 +1,120 @@
+================================================================================
+  SCALA DOMANDE - Riepilogo architettura dell'applicazione
+================================================================================
+
+Ultimo aggiornamento: giugno 2025
+
+
+1. COSA FA L'APP
+--------------------------------------------------------------------------------
+
+Scala Domande è un gioco a quiz in stile "Chi vuol essere Milionario":
+  - Ogni serie ha 10 domande a risposta multipla (4 opzioni, 1 corretta)
+  - Le serie sono divise per ARGOMENTO (es. Storia, Geografia...)
+  - L'utente sceglie l'argomento da un menu a tendina e gioca
+  - Un admin (con password) può creare argomenti e inserire domande
+
+
+2. SCHEMA GENERALE (vista dall'alto)
+--------------------------------------------------------------------------------
+
+  [Browser dell'utente]
+         |
+         v
+  [GitHub Pages]  -->  file statici (HTML, JS, CSS)
+         |
+         v
+  [Supabase Cloud]  -->  database PostgreSQL (tabelle "argomenti" e "domande")
+         |
+         |  fallback solo se Supabase NON è configurato
+         v
+  [localStorage del browser]
+
+
+3. STRUTTURA DEI FILE
+--------------------------------------------------------------------------------
+
+SCALADOMANDE/
+|
+|-- index.html              Punto di ingresso HTML
+|-- index.tsx               Avvia React
+|-- App.tsx                 Interfaccia: gioco + admin
+|-- types.ts                Tipi Argomento e Domanda
+|
+|-- services/
+|   └── storageService.ts   Lettura/scrittura dati (cloud o locale)
+|
+|-- supabase_setup.sql      Script SQL per creare tabelle su Supabase
+|-- vite.config.ts          base: '/SCALADOMANDE/' per GitHub Pages
+|-- package.json
+|
+|-- public/404.html
+|-- .github/workflows/deploy.yml
+|-- ARCHITETTURA.txt        Questo file
+
+
+4. MODELLO DATI
+--------------------------------------------------------------------------------
+
+Tabella "argomenti":
+  id          UUID      Chiave primaria
+  nome        TEXT      Nome argomento (es. "Storia") - univoco
+  created_at  BIGINT    Timestamp
+
+Tabella "domande":
+  id                UUID      Chiave primaria
+  argomento_id      UUID      Riferimento all'argomento
+  numero            INTEGER   Numero domanda da 1 a 10
+  testo             TEXT      Testo della domanda
+  risposta_a/b/c/d  TEXT      Le 4 risposte possibili
+  risposta_corretta CHAR(1)   'A', 'B', 'C' o 'D'
+  created_at        BIGINT    Timestamp
+
+  Vincolo: una sola domanda per ogni (argomento_id, numero)
+
+
+5. STESSO DATABASE DI QUATTRO PAROLE?
+--------------------------------------------------------------------------------
+
+  SI, puoi usare lo stesso progetto Supabase!
+
+  Quattro Parole usa la tabella "storia".
+  Scala Domande usa le tabelle "argomenti" e "domande".
+
+  Sono tabelle separate nello stesso database PostgreSQL.
+  Basta eseguire supabase_setup.sql nel SQL Editor (non tocca "storia").
+
+  Le credenziali (URL e anon key) sono le stesse in storageService.ts.
+
+
+6. SETUP SUPABASE
+--------------------------------------------------------------------------------
+
+  1. Apri Supabase Dashboard (stesso progetto di Quattro Parole)
+  2. Vai su SQL Editor → New query
+  3. Incolla ed esegui tutto supabase_setup.sql
+  4. Verifica che compaiano le tabelle argomenti e domande
+
+
+7. SVILUPPO LOCALE
+--------------------------------------------------------------------------------
+
+  cd SCALADOMANDE
+  npm install
+  npm run dev        --> http://localhost:5173
+  npm run build
+  npm run preview
+
+
+8. DEPLOY
+--------------------------------------------------------------------------------
+
+  Repository GitHub separato consigliato: lorenzomotta/SCALADOMANDE
+  URL previsto: https://lorenzomotta.github.io/SCALADOMANDE/
+
+  Push su main → GitHub Actions builda e pubblica automaticamente.
+
+
+================================================================================
+  Fine documento
+================================================================================
