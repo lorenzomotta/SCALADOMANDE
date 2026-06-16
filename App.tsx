@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Argomento, Domanda, RispostaLettera } from './types';
 import { storageService, StorageStatus } from './services/storageService';
 import ConfirmAnswerModal from './components/ConfirmAnswerModal';
+import FailModal from './components/FailModal';
 
 const INSERT_PASSWORD = 'VALHALLA';
 const DOMANDE_PER_SERIE = 10;
@@ -29,6 +30,7 @@ const App: React.FC = () => {
   const [selectedAnswer, setSelectedAnswer] = useState<RispostaLettera | null>(null);
   const [answerRevealed, setAnswerRevealed] = useState(false);
   const [pendingAnswer, setPendingAnswer] = useState<RispostaLettera | null>(null);
+  const [showFailModal, setShowFailModal] = useState(false);
 
   const [showAdmin, setShowAdmin] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -90,6 +92,7 @@ const App: React.FC = () => {
       setSelectedAnswer(null);
       setAnswerRevealed(false);
       setPendingAnswer(null);
+      setShowFailModal(false);
       setGamePhase('playing');
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : 'Errore caricamento domande.');
@@ -99,6 +102,23 @@ const App: React.FC = () => {
   };
 
   const currentDomanda = domande[currentIndex];
+
+  useEffect(() => {
+    if (!answerRevealed || !selectedAnswer || !currentDomanda || showFailModal) return;
+    if (selectedAnswer !== currentDomanda.rispostaCorretta) return;
+
+    const timer = window.setTimeout(() => {
+      if (currentIndex + 1 >= domande.length) {
+        setGamePhase('finished');
+        return;
+      }
+      setCurrentIndex((i) => i + 1);
+      setSelectedAnswer(null);
+      setAnswerRevealed(false);
+    }, 1500);
+
+    return () => window.clearTimeout(timer);
+  }, [answerRevealed, selectedAnswer, currentDomanda, currentIndex, domande.length, showFailModal]);
 
   const getRispostaTesto = (domanda: Domanda, lettera: RispostaLettera): string => {
     const map = { A: domanda.rispostaA, B: domanda.rispostaB, C: domanda.rispostaC, D: domanda.rispostaD };
@@ -118,6 +138,8 @@ const App: React.FC = () => {
     setAnswerRevealed(true);
     if (lettera === currentDomanda.rispostaCorretta) {
       setScore((s) => s + 1);
+    } else {
+      setShowFailModal(true);
     }
   };
 
@@ -125,15 +147,9 @@ const App: React.FC = () => {
     setPendingAnswer(null);
   };
 
-  const handleNextQuestion = () => {
-    if (currentIndex + 1 >= domande.length) {
-      setGamePhase('finished');
-      return;
-    }
-    setCurrentIndex((i) => i + 1);
-    setSelectedAnswer(null);
-    setAnswerRevealed(false);
-    setPendingAnswer(null);
+  const handleFailOk = () => {
+    setShowFailModal(false);
+    resetToMenu();
   };
 
   const resetToMenu = () => {
@@ -144,6 +160,7 @@ const App: React.FC = () => {
     setSelectedAnswer(null);
     setAnswerRevealed(false);
     setPendingAnswer(null);
+    setShowFailModal(false);
   };
 
   const handleShowAdmin = () => {
@@ -247,7 +264,6 @@ const App: React.FC = () => {
             </div>
             <div className="min-w-0">
               <h1 className="text-lg font-extrabold tracking-tight truncate">SCALA DOMANDE</h1>
-              <p className="text-[10px] text-amber-400/80 font-bold uppercase tracking-widest">Chi vuol essere milionario?</p>
             </div>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -378,18 +394,10 @@ const App: React.FC = () => {
                   ))}
                 </div>
 
-                {answerRevealed && (
-                  <div className="text-center space-y-3">
-                    <p className={`font-bold text-lg ${selectedAnswer === currentDomanda.rispostaCorretta ? 'text-emerald-400' : 'text-red-400'}`}>
-                      {selectedAnswer === currentDomanda.rispostaCorretta ? 'Risposta corretta!' : 'Risposta sbagliata!'}
-                    </p>
-                    <button
-                      onClick={handleNextQuestion}
-                      className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-8 rounded-xl transition-colors"
-                    >
-                      {currentIndex + 1 >= domande.length ? 'Vedi risultato' : 'Prossima domanda'}
-                    </button>
-                  </div>
+                {answerRevealed && selectedAnswer === currentDomanda.rispostaCorretta && (
+                  <p className="text-center font-bold text-lg text-emerald-400">
+                    Risposta corretta!
+                  </p>
                 )}
               </div>
             </div>
@@ -546,6 +554,10 @@ const App: React.FC = () => {
           </div>
         )}
       </main>
+
+      {showFailModal && (
+        <FailModal onOk={handleFailOk} />
+      )}
 
       {pendingAnswer && (
         <ConfirmAnswerModal
