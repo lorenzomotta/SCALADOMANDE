@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Argomento, Domanda, RispostaLettera } from './types';
 import { storageService, StorageStatus } from './services/storageService';
+import ConfirmAnswerModal from './components/ConfirmAnswerModal';
 
 const INSERT_PASSWORD = 'VALHALLA';
 const DOMANDE_PER_SERIE = 10;
@@ -27,6 +28,7 @@ const App: React.FC = () => {
   const [score, setScore] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState<RispostaLettera | null>(null);
   const [answerRevealed, setAnswerRevealed] = useState(false);
+  const [pendingAnswer, setPendingAnswer] = useState<RispostaLettera | null>(null);
 
   const [showAdmin, setShowAdmin] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -87,6 +89,7 @@ const App: React.FC = () => {
       setScore(0);
       setSelectedAnswer(null);
       setAnswerRevealed(false);
+      setPendingAnswer(null);
       setGamePhase('playing');
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : 'Errore caricamento domande.');
@@ -103,12 +106,23 @@ const App: React.FC = () => {
   };
 
   const handleAnswerClick = (lettera: RispostaLettera) => {
-    if (answerRevealed || !currentDomanda) return;
+    if (answerRevealed || pendingAnswer || !currentDomanda) return;
+    setPendingAnswer(lettera);
+  };
+
+  const handleConfirmAnswer = () => {
+    if (!pendingAnswer || !currentDomanda) return;
+    const lettera = pendingAnswer;
+    setPendingAnswer(null);
     setSelectedAnswer(lettera);
     setAnswerRevealed(true);
     if (lettera === currentDomanda.rispostaCorretta) {
       setScore((s) => s + 1);
     }
+  };
+
+  const handleCancelAnswer = () => {
+    setPendingAnswer(null);
   };
 
   const handleNextQuestion = () => {
@@ -119,6 +133,7 @@ const App: React.FC = () => {
     setCurrentIndex((i) => i + 1);
     setSelectedAnswer(null);
     setAnswerRevealed(false);
+    setPendingAnswer(null);
   };
 
   const resetToMenu = () => {
@@ -128,6 +143,7 @@ const App: React.FC = () => {
     setScore(0);
     setSelectedAnswer(null);
     setAnswerRevealed(false);
+    setPendingAnswer(null);
   };
 
   const handleShowAdmin = () => {
@@ -351,7 +367,7 @@ const App: React.FC = () => {
                       key={lettera}
                       type="button"
                       onClick={() => handleAnswerClick(lettera)}
-                      disabled={answerRevealed}
+                      disabled={answerRevealed || pendingAnswer !== null}
                       className={getAnswerButtonClass(lettera)}
                     >
                       <span className="flex-shrink-0 w-8 h-8 rounded-full bg-amber-500 text-slate-900 font-extrabold flex items-center justify-center text-sm">
@@ -530,6 +546,13 @@ const App: React.FC = () => {
           </div>
         )}
       </main>
+
+      {pendingAnswer && (
+        <ConfirmAnswerModal
+          onConfirm={handleConfirmAnswer}
+          onCancel={handleCancelAnswer}
+        />
+      )}
 
       {showPasswordModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
