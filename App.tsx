@@ -3,6 +3,7 @@ import { Argomento, Domanda, RispostaLettera } from './types';
 import { storageService, StorageStatus } from './services/storageService';
 import ConfirmAnswerModal from './components/ConfirmAnswerModal';
 import FailModal from './components/FailModal';
+import ResultCheckModal from './components/ResultCheckModal';
 
 const INSERT_PASSWORD = 'VALHALLA';
 const DOMANDE_PER_SERIE = 10;
@@ -17,6 +18,8 @@ const RISPOSTE_LABEL: Record<RispostaLettera, string> = {
 };
 
 const App: React.FC = () => {
+  type ResultCheckStatus = 'checking' | 'correct';
+
   const [argomenti, setArgomenti] = useState<Argomento[]>([]);
   const [selectedArgomentoId, setSelectedArgomentoId] = useState('');
   const [domande, setDomande] = useState<Domanda[]>([]);
@@ -31,6 +34,7 @@ const App: React.FC = () => {
   const [answerRevealed, setAnswerRevealed] = useState(false);
   const [pendingAnswer, setPendingAnswer] = useState<RispostaLettera | null>(null);
   const [showFailModal, setShowFailModal] = useState(false);
+  const [resultCheckStatus, setResultCheckStatus] = useState<ResultCheckStatus | null>(null);
 
   const [showAdmin, setShowAdmin] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -93,6 +97,7 @@ const App: React.FC = () => {
       setAnswerRevealed(false);
       setPendingAnswer(null);
       setShowFailModal(false);
+      setResultCheckStatus(null);
       setGamePhase('playing');
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : 'Errore caricamento domande.');
@@ -104,21 +109,45 @@ const App: React.FC = () => {
   const currentDomanda = domande[currentIndex];
 
   useEffect(() => {
-    if (!answerRevealed || !selectedAnswer || !currentDomanda || showFailModal) return;
-    if (selectedAnswer !== currentDomanda.rispostaCorretta) return;
+    if (resultCheckStatus !== 'checking' || !selectedAnswer || !currentDomanda) return;
 
-    const timer = window.setTimeout(() => {
-      if (currentIndex + 1 >= domande.length) {
-        setGamePhase('finished');
+    let advanceTimer: number | undefined;
+
+    const verifyTimer = window.setTimeout(() => {
+      const isCorrect = selectedAnswer === currentDomanda.rispostaCorretta;
+
+      if (!isCorrect) {
+        setResultCheckStatus(null);
+        setShowFailModal(true);
         return;
       }
-      setCurrentIndex((i) => i + 1);
-      setSelectedAnswer(null);
-      setAnswerRevealed(false);
-    }, 1500);
 
-    return () => window.clearTimeout(timer);
-  }, [answerRevealed, selectedAnswer, currentDomanda, currentIndex, domande.length, showFailModal]);
+      setScore((s) => s + 1);
+      setResultCheckStatus('correct');
+
+      advanceTimer = window.setTimeout(() => {
+        if (currentIndex + 1 >= domande.length) {
+          setSelectedAnswer(null);
+          setAnswerRevealed(false);
+          setResultCheckStatus(null);
+          setGamePhase('finished');
+          return;
+        }
+
+        setCurrentIndex((i) => i + 1);
+        setSelectedAnswer(null);
+        setAnswerRevealed(false);
+        setResultCheckStatus(null);
+      }, 950);
+    }, 900);
+
+    return () => {
+      window.clearTimeout(verifyTimer);
+      if (advanceTimer !== undefined) {
+        window.clearTimeout(advanceTimer);
+      }
+    };
+  }, [resultCheckStatus, selectedAnswer, currentDomanda, currentIndex, domande.length]);
 
   const getRispostaTesto = (domanda: Domanda, lettera: RispostaLettera): string => {
     const map = { A: domanda.rispostaA, B: domanda.rispostaB, C: domanda.rispostaC, D: domanda.rispostaD };
@@ -126,7 +155,7 @@ const App: React.FC = () => {
   };
 
   const handleAnswerClick = (lettera: RispostaLettera) => {
-    if (answerRevealed || pendingAnswer || !currentDomanda) return;
+    if (answerRevealed || pendingAnswer || resultCheckStatus !== null || !currentDomanda) return;
     setPendingAnswer(lettera);
   };
 
@@ -136,11 +165,7 @@ const App: React.FC = () => {
     setPendingAnswer(null);
     setSelectedAnswer(lettera);
     setAnswerRevealed(true);
-    if (lettera === currentDomanda.rispostaCorretta) {
-      setScore((s) => s + 1);
-    } else {
-      setShowFailModal(true);
-    }
+    setResultCheckStatus('checking');
   };
 
   const handleCancelAnswer = () => {
@@ -161,6 +186,7 @@ const App: React.FC = () => {
     setAnswerRevealed(false);
     setPendingAnswer(null);
     setShowFailModal(false);
+    setResultCheckStatus(null);
   };
 
   const handleShowAdmin = () => {
@@ -383,7 +409,7 @@ const App: React.FC = () => {
                       key={lettera}
                       type="button"
                       onClick={() => handleAnswerClick(lettera)}
-                      disabled={answerRevealed || pendingAnswer !== null}
+                      disabled={answerRevealed || pendingAnswer !== null || resultCheckStatus !== null}
                       className={getAnswerButtonClass(lettera)}
                     >
                       <span className="flex-shrink-0 w-8 h-8 rounded-full bg-amber-500 text-slate-900 font-extrabold flex items-center justify-center text-sm">
@@ -394,7 +420,7 @@ const App: React.FC = () => {
                   ))}
                 </div>
 
-                {answerRevealed && selectedAnswer === currentDomanda.rispostaCorretta && (
+                {answerRevealed && selectedAnswer === currentDomanda.rispostaCorretta && resultCheckStatus === null && (
                   <p className="text-center font-bold text-lg text-emerald-400">
                     Risposta corretta!
                   </p>
@@ -557,6 +583,10 @@ const App: React.FC = () => {
 
       {showFailModal && (
         <FailModal onOk={handleFailOk} />
+      )}
+
+      {resultCheckStatus && (
+        <ResultCheckModal status={resultCheckStatus} />
       )}
 
       {pendingAnswer && (
