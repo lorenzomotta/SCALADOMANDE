@@ -7,6 +7,8 @@ import ResultCheckModal from './components/ResultCheckModal';
 
 const INSERT_PASSWORD = 'VALHALLA';
 const DOMANDE_PER_SERIE = 10;
+const VERIFY_DELAY_MS = 2500;
+const CORRECT_MESSAGE_DELAY_MS = 2000;
 
 type GamePhase = 'menu' | 'playing' | 'finished';
 
@@ -109,23 +111,27 @@ const App: React.FC = () => {
   const currentDomanda = domande[currentIndex];
 
   useEffect(() => {
-    if (resultCheckStatus !== 'checking' || !selectedAnswer || !currentDomanda) return;
+    if (!selectedAnswer || !currentDomanda) return;
 
-    let advanceTimer: number | undefined;
+    if (resultCheckStatus === 'checking') {
+      const verifyTimer = window.setTimeout(() => {
+        const isCorrect = selectedAnswer === currentDomanda.rispostaCorretta;
 
-    const verifyTimer = window.setTimeout(() => {
-      const isCorrect = selectedAnswer === currentDomanda.rispostaCorretta;
+        if (!isCorrect) {
+          setResultCheckStatus(null);
+          setShowFailModal(true);
+          return;
+        }
 
-      if (!isCorrect) {
-        setResultCheckStatus(null);
-        setShowFailModal(true);
-        return;
-      }
+        setScore((s) => s + 1);
+        setResultCheckStatus('correct');
+      }, VERIFY_DELAY_MS);
 
-      setScore((s) => s + 1);
-      setResultCheckStatus('correct');
+      return () => window.clearTimeout(verifyTimer);
+    }
 
-      advanceTimer = window.setTimeout(() => {
+    if (resultCheckStatus === 'correct') {
+      const advanceTimer = window.setTimeout(() => {
         if (currentIndex + 1 >= domande.length) {
           setSelectedAnswer(null);
           setAnswerRevealed(false);
@@ -138,15 +144,10 @@ const App: React.FC = () => {
         setSelectedAnswer(null);
         setAnswerRevealed(false);
         setResultCheckStatus(null);
-      }, 950);
-    }, 900);
+      }, CORRECT_MESSAGE_DELAY_MS);
 
-    return () => {
-      window.clearTimeout(verifyTimer);
-      if (advanceTimer !== undefined) {
-        window.clearTimeout(advanceTimer);
-      }
-    };
+      return () => window.clearTimeout(advanceTimer);
+    }
   }, [resultCheckStatus, selectedAnswer, currentDomanda, currentIndex, domande.length]);
 
   const getRispostaTesto = (domanda: Domanda, lettera: RispostaLettera): string => {
