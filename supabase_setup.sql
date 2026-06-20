@@ -62,6 +62,15 @@ DROP POLICY IF EXISTS "Chiunque può inserire domande" ON domande;
 CREATE POLICY "Chiunque può inserire domande"
 ON domande FOR INSERT TO anon WITH CHECK (true);
 
+-- Policy: modifica argomenti e domande (admin via password nell'app)
+DROP POLICY IF EXISTS "Chiunque può aggiornare argomenti" ON argomenti;
+CREATE POLICY "Chiunque può aggiornare argomenti"
+ON argomenti FOR UPDATE TO anon USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Chiunque può aggiornare domande" ON domande;
+CREATE POLICY "Chiunque può aggiornare domande"
+ON domande FOR UPDATE TO anon USING (true) WITH CHECK (true);
+
 -- ============================================================================
 -- DATI DI ESEMPIO (opzionale - commenta se non li vuoi)
 -- ============================================================================

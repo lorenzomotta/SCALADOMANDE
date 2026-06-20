@@ -197,50 +197,129 @@ export const storageService = {
     return nuovo;
   },
 
-  saveDomanda: async (domanda: NuovaDomanda): Promise<void> => {
+  updateArgomento: async (id: string, nome: string): Promise<Argomento> => {
+    const trimmed = nome.trim();
+    if (!trimmed) throw new Error('Il nome argomento è obbligatorio.');
+
+    if (supabase) {
+      const result = await supabase
+        .from('argomenti')
+        .update({ nome: trimmed })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (result.error) {
+        if (result.error.message?.includes('duplicate') || result.error.code === '23505') {
+          throw new Error('Questo nome argomento esiste già.');
+        }
+        throw new Error(result.error.message);
+      }
+
+      return rowToArgomento(result.data as RowArgomento);
+    }
+
+    const argomenti = getLocalArgomenti();
+    if (argomenti.some((a) => a.id !== id && a.nome.toLowerCase() === trimmed.toLowerCase())) {
+      throw new Error('Questo nome argomento esiste già.');
+    }
+
+    const updated = argomenti.map((a) =>
+      a.id === id ? { ...a, nome: trimmed } : a
+    );
+    if (!updated.some((a) => a.id === id)) {
+      throw new Error('Argomento non trovato.');
+    }
+    saveLocalArgomenti(updated);
+    return updated.find((a) => a.id === id)!;
+  },
+
+  upsertDomanda: async (domanda: NuovaDomanda, existingId?: string): Promise<Domanda> => {
     if (domanda.numero < 1 || domanda.numero > 10) {
       throw new Error('Il numero domanda deve essere tra 1 e 10.');
     }
 
-    if (supabase) {
-      const result = await supabase.from('domande').insert([{
-        argomento_id: domanda.argomentoId,
-        numero: domanda.numero,
-        testo: domanda.testo.trim(),
-        risposta_a: domanda.rispostaA.trim(),
-        risposta_b: domanda.rispostaB.trim(),
-        risposta_c: domanda.rispostaC.trim(),
-        risposta_d: domanda.rispostaD.trim(),
-        risposta_corretta: domanda.rispostaCorretta,
-        created_at: Date.now(),
-      }]);
-
-      if (result.error) {
-        if (result.error.message?.includes('duplicate') || result.error.code === '23505') {
-          throw new Error(`La domanda n. ${domanda.numero} esiste già per questo argomento.`);
-        }
-        throw new Error(result.error.message);
-      }
-      return;
-    }
-
-    const domande = getLocalDomande();
-    if (domande.some((d) => d.argomentoId === domanda.argomentoId && d.numero === domanda.numero)) {
-      throw new Error(`La domanda n. ${domanda.numero} esiste già per questo argomento.`);
-    }
-
-    const nuova: Domanda = {
-      id: crypto.randomUUID(),
-      argomentoId: domanda.argomentoId,
-      numero: domanda.numero,
+    const payload = {
       testo: domanda.testo.trim(),
       rispostaA: domanda.rispostaA.trim(),
       rispostaB: domanda.rispostaB.trim(),
       rispostaC: domanda.rispostaC.trim(),
       rispostaD: domanda.rispostaD.trim(),
       rispostaCorretta: domanda.rispostaCorretta,
+    };
+
+    if (supabase) {
+      if (existingId) {
+        const result = await supabase
+          .from('domande')
+          .update({
+            testo: payload.testo,
+            risposta_a: payload.rispostaA,
+            risposta_b: payload.rispostaB,
+            risposta_c: payload.rispostaC,
+            risposta_d: payload.rispostaD,
+            risposta_corretta: payload.rispostaCorretta,
+          })
+          .eq('id', existingId)
+          .select()
+          .single();
+
+        if (result.error) throw new Error(result.error.message);
+        return rowToDomanda(result.data as RowDomanda);
+      }
+
+      const result = await supabase.from('domande').insert([{
+        argomento_id: domanda.argomentoId,
+        numero: domanda.numero,
+        testo: payload.testo,
+        risposta_a: payload.rispostaA,
+        risposta_b: payload.rispostaB,
+        risposta_c: payload.rispostaC,
+        risposta_d: payload.rispostaD,
+        risposta_corretta: payload.rispostaCorretta,
+        created_at: Date.now(),
+      }]).select().single();
+
+      if (result.error) {
+        if (result.error.message?.includes('duplicate') || result.error.code === '23505') {
+          throw new Error(`La domanda n. ${domanda.numero} esiste già. Selezionala dal menu per modificarla.`);
+        }
+        throw new Error(result.error.message);
+      }
+
+      return rowToDomanda(result.data as RowDomanda);
+    }
+
+    const domande = getLocalDomande();
+    const existing = existingId
+      ? domande.find((d) => d.id === existingId)
+      : domande.find((d) => d.argomentoId === domanda.argomentoId && d.numero === domanda.numero);
+
+    if (existing) {
+      const updated: Domanda = {
+        ...existing,
+        ...payload,
+      };
+      saveLocalDomande(domande.map((d) => (d.id === existing.id ? updated : d)));
+      return updated;
+    }
+
+    if (domande.some((d) => d.argomentoId === domanda.argomentoId && d.numero === domanda.numero)) {
+      throw new Error(`La domanda n. ${domanda.numero} esiste già. Selezionala dal menu per modificarla.`);
+    }
+
+    const nuova: Domanda = {
+      id: crypto.randomUUID(),
+      argomentoId: domanda.argomentoId,
+      numero: domanda.numero,
+      ...payload,
       createdAt: Date.now(),
     };
     saveLocalDomande([...domande, nuova]);
+    return nuova;
+  },
+
+  saveDomanda: async (domanda: NuovaDomanda): Promise<void> => {
+    await storageService.upsertDomanda(domanda);
   },
 };

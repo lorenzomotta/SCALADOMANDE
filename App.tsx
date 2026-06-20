@@ -54,6 +54,9 @@ const App: React.FC = () => {
   const [rispostaC, setRispostaC] = useState('');
   const [rispostaD, setRispostaD] = useState('');
   const [rispostaCorretta, setRispostaCorretta] = useState<RispostaLettera>('A');
+  const [adminDomande, setAdminDomande] = useState<Domanda[]>([]);
+  const [editingDomandaId, setEditingDomandaId] = useState<string | null>(null);
+  const [editArgomentoNome, setEditArgomentoNome] = useState('');
 
   const loadArgomenti = useCallback(async () => {
     setLoading(true);
@@ -77,6 +80,57 @@ const App: React.FC = () => {
   useEffect(() => {
     loadArgomenti();
   }, [loadArgomenti]);
+
+  const clearDomandaForm = () => {
+    setEditingDomandaId(null);
+    setTestoDomanda('');
+    setRispostaA('');
+    setRispostaB('');
+    setRispostaC('');
+    setRispostaD('');
+    setRispostaCorretta('A');
+  };
+
+  const loadDomandaIntoForm = (domanda: Domanda | null) => {
+    if (!domanda) {
+      clearDomandaForm();
+      return;
+    }
+    setEditingDomandaId(domanda.id);
+    setTestoDomanda(domanda.testo);
+    setRispostaA(domanda.rispostaA);
+    setRispostaB(domanda.rispostaB);
+    setRispostaC(domanda.rispostaC);
+    setRispostaD(domanda.rispostaD);
+    setRispostaCorretta(domanda.rispostaCorretta);
+  };
+
+  const loadAdminDomande = useCallback(async (argomentoId: string) => {
+    if (!argomentoId) {
+      setAdminDomande([]);
+      return;
+    }
+    try {
+      const list = await storageService.getDomandeByArgomento(argomentoId);
+      setAdminDomande(list);
+    } catch (error) {
+      setAdminDomande([]);
+      setSaveError(error instanceof Error ? error.message : 'Errore caricamento domande admin.');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!showAdmin || !adminArgomentoId) return;
+    loadAdminDomande(adminArgomentoId);
+    const arg = argomenti.find((a) => a.id === adminArgomentoId);
+    if (arg) setEditArgomentoNome(arg.nome);
+  }, [showAdmin, adminArgomentoId, argomenti, loadAdminDomande]);
+
+  useEffect(() => {
+    if (!showAdmin || !adminArgomentoId) return;
+    const domanda = adminDomande.find((d) => d.numero === numeroDomanda) ?? null;
+    loadDomandaIntoForm(domanda);
+  }, [showAdmin, adminArgomentoId, numeroDomanda, adminDomande]);
 
   const selectedArgomento = argomenti.find((a) => a.id === selectedArgomentoId);
 
@@ -220,8 +274,24 @@ const App: React.FC = () => {
       setSaveSuccess(`Argomento "${nuovo.nome}" creato!`);
       await loadArgomenti();
       setAdminArgomentoId(nuovo.id);
+      setEditArgomentoNome(nuovo.nome);
+      setNumeroDomanda(1);
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : 'Errore salvataggio argomento.');
+    }
+  };
+
+  const handleUpdateArgomento = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminArgomentoId || !editArgomentoNome.trim()) return;
+    setSaveError('');
+    setSaveSuccess('');
+    try {
+      const aggiornato = await storageService.updateArgomento(adminArgomentoId, editArgomentoNome);
+      setSaveSuccess(`Argomento rinominato in "${aggiornato.nome}"!`);
+      await loadArgomenti();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Errore modifica argomento.');
     }
   };
 
@@ -230,8 +300,10 @@ const App: React.FC = () => {
     if (!adminArgomentoId || !testoDomanda.trim()) return;
     setSaveError('');
     setSaveSuccess('');
+    const savedNumero = numeroDomanda;
+    const isUpdate = editingDomandaId !== null;
     try {
-      await storageService.saveDomanda({
+      await storageService.upsertDomanda({
         argomentoId: adminArgomentoId,
         numero: numeroDomanda,
         testo: testoDomanda,
@@ -240,17 +312,28 @@ const App: React.FC = () => {
         rispostaC,
         rispostaD,
         rispostaCorretta,
-      });
-      setTestoDomanda('');
-      setRispostaA('');
-      setRispostaB('');
-      setRispostaC('');
-      setRispostaD('');
-      setRispostaCorretta('A');
-      setSaveSuccess(`Domanda n. ${numeroDomanda} salvata!`);
+      }, editingDomandaId ?? undefined);
+
+      await loadAdminDomande(adminArgomentoId);
+
+      if (isUpdate) {
+        setSaveSuccess(`Domanda n. ${savedNumero} aggiornata!`);
+      } else {
+        setSaveSuccess(`Domanda n. ${savedNumero} salvata!`);
+        if (savedNumero < DOMANDE_PER_SERIE) {
+          setNumeroDomanda(savedNumero + 1);
+        }
+      }
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : 'Errore salvataggio domanda.');
     }
+  };
+
+  const handleAdminArgomentoChange = (argomentoId: string) => {
+    setAdminArgomentoId(argomentoId);
+    setNumeroDomanda(1);
+    const arg = argomenti.find((a) => a.id === argomentoId);
+    setEditArgomentoNome(arg?.nome ?? '');
   };
 
   const getStorageBadge = () => {
@@ -498,14 +581,33 @@ const App: React.FC = () => {
               </button>
             </form>
 
+            {adminArgomentoId && (
+              <form onSubmit={handleUpdateArgomento} className="bg-slate-800/60 rounded-xl border border-indigo-500/30 p-4 space-y-3">
+                <h3 className="font-bold text-white">Modifica argomento selezionato</h3>
+                <input
+                  type="text"
+                  value={editArgomentoNome}
+                  onChange={(e) => setEditArgomentoNome(e.target.value)}
+                  required
+                  className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white"
+                />
+                <p className="text-xs text-slate-400">
+                  Domande presenti: {adminDomande.length} / {DOMANDE_PER_SERIE}
+                </p>
+                <button type="submit" className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-4 rounded-lg text-sm">
+                  Salva nome argomento
+                </button>
+              </form>
+            )}
+
             <form onSubmit={handleSaveDomanda} className="bg-slate-800/60 rounded-xl border border-indigo-500/30 p-4 space-y-4">
-              <h3 className="font-bold text-white">Aggiungi domanda (1–10 per argomento)</h3>
+              <h3 className="font-bold text-white">Aggiungi o modifica domanda (1–10)</h3>
 
               <div>
                 <label className="block text-sm text-slate-300 mb-1">Argomento</label>
                 <select
                   value={adminArgomentoId}
-                  onChange={(e) => setAdminArgomentoId(e.target.value)}
+                  onChange={(e) => handleAdminArgomentoChange(e.target.value)}
                   required
                   className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white"
                 >
@@ -523,10 +625,18 @@ const App: React.FC = () => {
                   onChange={(e) => setNumeroDomanda(Number(e.target.value))}
                   className="w-full bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-white"
                 >
-                  {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
-                    <option key={n} value={n}>Domanda {n}</option>
-                  ))}
+                  {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => {
+                    const exists = adminDomande.some((d) => d.numero === n);
+                    return (
+                      <option key={n} value={n}>
+                        Domanda {n}{exists ? ' ✓' : ''}
+                      </option>
+                    );
+                  })}
                 </select>
+                {editingDomandaId && (
+                  <p className="mt-1 text-xs text-emerald-400">Stai modificando una domanda già salvata.</p>
+                )}
               </div>
 
               <div>
@@ -575,7 +685,7 @@ const App: React.FC = () => {
               </div>
 
               <button type="submit" className="w-full bg-gradient-to-r from-amber-500 to-amber-600 text-slate-900 font-bold py-3 rounded-xl">
-                Salva domanda
+                {editingDomandaId ? 'Aggiorna domanda' : 'Salva domanda'}
               </button>
             </form>
           </div>
